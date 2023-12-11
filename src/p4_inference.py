@@ -93,13 +93,13 @@ def inference():
     
     if choice_model == "BERT Model 1":
         if choice_pretraining_model == "bert-base-uncased":
-            weight_path = "comming soon"
+            weight_path = "Model_BERT_1_270/best_model_BERT1 (1).pt"
         elif choice_pretraining_model == "alvaroalon2/biobert_diseases_ner":
             weight_path = "Model_BERT_1_270/best_model_BERT1 (1).pt"
 
     elif choice_model == "BERT Model 2": 
         if choice_pretraining_model == "bert-base-uncased":
-            weight_path = "comming soon"
+            weight_path = "Model_BERT_2_Nomal/best_model_BERT2_bert-base-uncased.pt"
         elif choice_pretraining_model == "alvaroalon2/biobert_diseases_ner":
             weight_path = "Model_BERT_2/final_model_BERT2.pt"
 

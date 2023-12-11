@@ -101,8 +101,7 @@ def inference():
         if choice_pretraining_model == "bert-base-uncased":
             weight_path = "comming soon"
         elif choice_pretraining_model == "alvaroalon2/biobert_diseases_ner":
-            weight_path = "Model_BERT_2/best_model_BERT2.pt"
-        max_len = 30
+            weight_path = "Model_BERT_2/final_model_BERT2.pt"
 
     tokenizer = BertTokenizer.from_pretrained(choice_pretraining_model) 
 
@@ -145,56 +144,102 @@ def inference():
             attention_mask = data["attention_mask"]
             logits = model_predict(input_ids, attention_mask)
 
-            # # Check if there is more than one class
-            # adjustment = 0.2
-            # if logits.size(1) > 1:
-            #     logits[0] = logits[0] - logits[0] * adjustment
-            #     second_max_index = torch.argsort(logits, descending=True)[0][1]
-            #     logits[second_max_index] += logits[0] * adjustment
-
-            # Get predicted labels
+            # Get predicted labels and probabilities
             predicted_labels = torch.argmax(logits, dim=1).tolist()[0]
+            predicted_probs = torch.nn.functional.softmax(logits, dim=1)[0].tolist()
+            print(predicted_labels)
+
+            # Check if the prediction is false (label 5)
+            if predicted_labels == 0 :
+                # Penalize false prediction by reducing probabilities
+                predicted_probs_2 = torch.tensor(predicted_probs)  # Convert list to tensor
+                second_best_index = sorted(range(len(predicted_probs_2)), key=lambda i: -predicted_probs_2[i])[1]
+                penaty = 0.21*predicted_probs[0]  
+                predicted_probs[0] = predicted_probs[0] - penaty
+                predicted_probs[second_best_index] = predicted_probs[second_best_index] + penaty
+                
+
             st.success(f"Predicted Relation: {labels[predicted_labels]}")
 
-            probs = torch.nn.functional.softmax(logits, dim=1)[0].tolist()
-            break
+            # Filter out class 5
+            filtered_probs = [prob for i, prob in enumerate(predicted_probs) if i != 5]
 
-        # Filter out class 5
-        filtered_probs = [prob for i, prob in enumerate(probs) if i != 5]
+            # Create a list of labels excluding class 5
+            filtered_labels = [label for i, label in enumerate(labels) if i != 5]
 
-        # Create a list of labels excluding class 5
-        filtered_labels = labels
+            # Plot the distribution using seaborn
+            plt.figure(figsize=(8, 6))
+            sns.barplot(x=filtered_labels, y=filtered_probs, palette='viridis')
+            plt.xlabel('Labels')
+            plt.ylabel('Probability')
+            plt.title('Predicted Label Distribution')
 
-        # Plot the distribution using seaborn
-        plt.figure(figsize=(8, 6))
-        sns.barplot(x=filtered_labels, y=filtered_probs, palette='viridis')
-        plt.xlabel('Labels')
-        plt.ylabel('Probability')
-        plt.title('Predicted Label Distribution')
+            # Display percentages on top of each bar
+            for i, prob in enumerate(filtered_probs):
+                plt.text(i, prob + 0.01, f'{prob * 100:.2f}%', ha='center')
 
-        # Display percentages on top of each bar
-        for i, prob in enumerate(filtered_probs):
-            plt.text(i, prob + 0.01, f'{prob * 100:.2f}%', ha='center')
+            st.pyplot(plt)
 
-        st.pyplot(plt)
+            st.balloons()
 
-        st.balloons()
-
-    # if st.button("Run"): 
-    #     bert_model_name = choice_pretraining_model 
+    # if st.button("Run"):
+    #     bert_model_name = choice_pretraining_model
     #     print(bert_model_name)
     #     print(weight_path)
-        
-    #     model_predict = load_bert_model(weight_path, bert_model_name) 
+
+    #     model_predict = load_bert_model(weight_path, bert_model_name)
 
     #     for data in test_loader:
     #         input_ids = data["input_ids"]
     #         attention_mask = data["attention_mask"]
     #         logits = model_predict(input_ids, attention_mask)
+
+    #         # Get predicted labels and probabilities
+    #         predicted_labels = torch.argmax(logits, dim=1).tolist()[0]
+    #         predicted_probs = torch.nn.functional.softmax(logits, dim=1)[0].tolist()
+
+    #         st.success(f"Predicted Relation: {labels[predicted_labels]}")
+
+    #         # Filter out class 5
+    #         filtered_probs = [prob for i, prob in enumerate(predicted_probs) if i != 5]
+
+    #         # Create a list of labels excluding class 5
+    #         filtered_labels = [label for i, label in enumerate(labels) if i != 5]
+
+    #         # Plot the distribution using seaborn
+    #         plt.figure(figsize=(8, 6))
+    #         sns.barplot(x=filtered_labels, y=filtered_probs, palette='viridis')
+    #         plt.xlabel('Labels')
+    #         plt.ylabel('Probability')
+    #         plt.title('Predicted Label Distribution')
+
+    #         # Display percentages on top of each bar
+    #         for i, prob in enumerate(filtered_probs):
+    #             plt.text(i, prob + 0.01, f'{prob * 100:.2f}%', ha='center')
+
+    #         st.pyplot(plt)
+
+    #         st.balloons()
+
+
+
+
+    # if st.button("Run"):
+    #     bert_model_name = choice_pretraining_model
+    #     print(bert_model_name)
+    #     print(weight_path)
+
+    #     model_predict = load_bert_model(weight_path, bert_model_name)
+
+    #     for data in test_loader:
+    #         input_ids = data["input_ids"]
+    #         attention_mask = data["attention_mask"]
+    #         logits = model_predict(input_ids, attention_mask)
+
     #         # Get predicted labels
-    #         # predicted_labels = torch.argmax(logits, dim=1).tolist()
-    #         predicted_labels = torch.argmax(logits, dim=1).tolist()[0] 
-    #         st.success(f"Predicted Relation: {labels[predicted_labels]}") 
+    #         predicted_labels = torch.argmax(logits, dim=1).tolist()[0]
+    #         st.success(f"Predicted Relation: {labels[predicted_labels]}")
+
     #         probs = torch.nn.functional.softmax(logits, dim=1)[0].tolist()
     #         break
 
@@ -215,9 +260,6 @@ def inference():
     #     for i, prob in enumerate(filtered_probs):
     #         plt.text(i, prob + 0.01, f'{prob * 100:.2f}%', ha='center')
 
-    #     st.pyplot(plt) 
+    #     st.pyplot(plt)
 
     #     st.balloons()
-
-
-

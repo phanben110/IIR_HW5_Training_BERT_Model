@@ -8,11 +8,47 @@ from datetime import datetime
 import torch.nn as nn
 import warnings
 import matplotlib.pyplot as plt
+from torch.utils.data import Dataset, DataLoader
 import seaborn as sns
 warnings.filterwarnings("ignore")
 
 device = "cpu"
 labels = ["false", "effect", "mechanism", "advise", "int"] 
+
+# Tokenize and encode the sentences
+class MyDataset(Dataset):
+    def __init__(self, e1, e2, sentence , tokenizer, max_len):
+        self.e1 = e1
+        self.e2 = e2 
+        self.sentence = sentence 
+        self.tokenizer = tokenizer 
+        self.max_len = max_len
+
+    def __len__(self):
+          return 1 
+
+    def __getitem__(self, index):
+        if self.sentence == None: 
+            input_text = f"{self.e1} [SEP] {self.e2}"
+        else:
+            input_text = f"{self.sentence} [SEP] {self.e1} [SEP] {self.e2}"
+
+        encoding = self.tokenizer.encode_plus(
+            input_text,
+            add_special_tokens=True,
+            truncation=True,
+            max_length=self.max_len,
+            return_token_type_ids=False,
+            padding='max_length',
+            return_attention_mask=True,
+            return_tensors='pt',
+        )
+
+        return {
+            'text': input_text,
+            'input_ids': encoding['input_ids'].flatten(),
+            'attention_mask': encoding['attention_mask'].flatten()
+        }
 
 class BertSentimentClassifier(nn.Module):
     def __init__(self, bert_model_name, num_classes):
@@ -40,8 +76,7 @@ def load_bert_model(weight_path, bert_model_name):
     num_classes = 6
     model_predict = BertSentimentClassifier(bert_model_name, num_classes)
     model_predict.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-    tokenizer = BertTokenizer.from_pretrained(bert_model_name) 
-    return model_predict, tokenizer
+    return model_predict 
 
 def inference():
     st.image("image/4_inference.png")
@@ -61,7 +96,6 @@ def inference():
             weight_path = "comming soon"
         elif choice_pretraining_model == "alvaroalon2/biobert_diseases_ner":
             weight_path = "Model_BERT_1_270/best_model_BERT1 (1).pt"
-        max_len = 270 
 
     elif choice_model == "BERT Model 2": 
         if choice_pretraining_model == "bert-base-uncased":
@@ -69,6 +103,8 @@ def inference():
         elif choice_pretraining_model == "alvaroalon2/biobert_diseases_ner":
             weight_path = "Model_BERT_2/best_model_BERT2.pt"
         max_len = 30
+
+    tokenizer = BertTokenizer.from_pretrained(choice_pretraining_model) 
 
 
     st.subheader("Step 2: Input the sentence.", divider='rainbow') 
@@ -84,31 +120,44 @@ def inference():
     if choice_model == "BERT Model 1":
         full_sentence = st.text_input("Enter Full Sentence:") 
         input_text = f"{e1} [SEP] {e2} [SEP] {full_sentence}"
-    else: 
-        input_text = f"{e1} [SEP] {e2}"
+        test_dataset = MyDataset( e1 = e1, e2 = e2, sentence = full_sentence , tokenizer = tokenizer, max_len = 270)
+        test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True )
+        print(test_dataset["text"])
+    elif choice_model == "BERT Model 2":
+        test_dataset = MyDataset( e1 = e1, e2 = e2, sentence = None , tokenizer = tokenizer, max_len = 30)
+        test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True )
+        print(test_dataset["text"])
+
     
-    st.subheader("Step 3: Output the result.", divider='rainbow') 
-    if st.button("Run"): 
-        bert_model_name = choice_pretraining_model 
-        
-        model_predict, tokenizer = load_bert_model(weight_path, bert_model_name)  
 
-        encoded_input = tokenizer.encode_plus(
-            input_text, 
-            add_special_tokens=True,
-            truncation=True,
-            max_length= max_len,
-            return_token_type_ids=False,
-            padding='max_length',
-            return_attention_mask=True,
-            return_tensors='pt',
-        ).to(device)
+    
+    st.subheader("Step 3: Output the result.", divider='rainbow')
 
-        predict_id = torch.argmax(model_predict(**encoded_input), dim=1).item()
-        print(labels[predict_id]) 
-        st.success(f"Predicted Relation: {labels[predict_id]}")
-        # Get the predicted label probabilities
-        probs = torch.nn.functional.softmax(model_predict(**encoded_input), dim=1)[0].tolist()
+    if st.button("Run"):
+        bert_model_name = choice_pretraining_model
+        print(bert_model_name)
+        print(weight_path)
+
+        model_predict = load_bert_model(weight_path, bert_model_name)
+
+        for data in test_loader:
+            input_ids = data["input_ids"]
+            attention_mask = data["attention_mask"]
+            logits = model_predict(input_ids, attention_mask)
+
+            # # Check if there is more than one class
+            # adjustment = 0.2
+            # if logits.size(1) > 1:
+            #     logits[0] = logits[0] - logits[0] * adjustment
+            #     second_max_index = torch.argsort(logits, descending=True)[0][1]
+            #     logits[second_max_index] += logits[0] * adjustment
+
+            # Get predicted labels
+            predicted_labels = torch.argmax(logits, dim=1).tolist()[0]
+            st.success(f"Predicted Relation: {labels[predicted_labels]}")
+
+            probs = torch.nn.functional.softmax(logits, dim=1)[0].tolist()
+            break
 
         # Filter out class 5
         filtered_probs = [prob for i, prob in enumerate(probs) if i != 5]
@@ -126,10 +175,49 @@ def inference():
         # Display percentages on top of each bar
         for i, prob in enumerate(filtered_probs):
             plt.text(i, prob + 0.01, f'{prob * 100:.2f}%', ha='center')
-        st.pyplot(plt) 
+
+        st.pyplot(plt)
 
         st.balloons()
 
+    # if st.button("Run"): 
+    #     bert_model_name = choice_pretraining_model 
+    #     print(bert_model_name)
+    #     print(weight_path)
+        
+    #     model_predict = load_bert_model(weight_path, bert_model_name) 
+
+    #     for data in test_loader:
+    #         input_ids = data["input_ids"]
+    #         attention_mask = data["attention_mask"]
+    #         logits = model_predict(input_ids, attention_mask)
+    #         # Get predicted labels
+    #         # predicted_labels = torch.argmax(logits, dim=1).tolist()
+    #         predicted_labels = torch.argmax(logits, dim=1).tolist()[0] 
+    #         st.success(f"Predicted Relation: {labels[predicted_labels]}") 
+    #         probs = torch.nn.functional.softmax(logits, dim=1)[0].tolist()
+    #         break
+
+    #     # Filter out class 5
+    #     filtered_probs = [prob for i, prob in enumerate(probs) if i != 5]
+
+    #     # Create a list of labels excluding class 5
+    #     filtered_labels = labels
+
+    #     # Plot the distribution using seaborn
+    #     plt.figure(figsize=(8, 6))
+    #     sns.barplot(x=filtered_labels, y=filtered_probs, palette='viridis')
+    #     plt.xlabel('Labels')
+    #     plt.ylabel('Probability')
+    #     plt.title('Predicted Label Distribution')
+
+    #     # Display percentages on top of each bar
+    #     for i, prob in enumerate(filtered_probs):
+    #         plt.text(i, prob + 0.01, f'{prob * 100:.2f}%', ha='center')
+
+    #     st.pyplot(plt) 
+
+    #     st.balloons()
 
 
 
